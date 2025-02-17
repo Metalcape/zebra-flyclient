@@ -815,6 +815,7 @@ where
                 merkle_root,
                 block_commitments,
                 final_sapling_root,
+                chain_history_root,
                 sapling_tree_size,
                 time,
                 nonce,
@@ -928,6 +929,7 @@ where
                 block_commitments: Some(block_commitments),
                 final_sapling_root: Some(final_sapling_root),
                 final_orchard_root,
+                chain_history_root: Some(chain_history_root),
                 previous_block_hash: Some(previous_block_hash),
                 next_block_hash,
             })
@@ -1023,13 +1025,36 @@ where
 
             let difficulty = header.difficulty_threshold.relative_to_network(&network);
 
-            let block_commitments = match header.commitment(&network, height).expect(
+            let commitment = header.commitment(&network, height).expect(
                 "Unexpected failure while parsing the blockcommitments field in get_block_header",
-            ) {
+            );
+
+            let chain_history_root = match commitment {
+                Commitment::ChainHistoryRoot(root) => root.bytes_in_display_order(),
+                Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
+                    let zebra_state::ReadResponse::HistoryTree(history_tree) = state
+                        .clone()
+                        .oneshot(zebra_state::ReadRequest::HistoryTree(hash_or_height))
+                        .await
+                        .map_misc_error()?
+                    else {
+                        panic!("unexpected response to HistoryTree request")
+                    };
+
+                    history_tree
+                        .ok_or_misc_error("missing history tree")?
+                        .hash()
+                        .ok_or_misc_error("history tree was empty")?
+                        .bytes_in_display_order()
+                }
+                _ => [0; 32],
+            };
+
+            let block_commitments = match commitment {
                 Commitment::PreSaplingReserved(bytes) => bytes,
                 Commitment::FinalSaplingRoot(_) => final_sapling_root,
-                Commitment::ChainHistoryActivationReserved => [0; 32],
-                Commitment::ChainHistoryRoot(root) => root.bytes_in_display_order(),
+                Commitment::ChainHistoryActivationReserved => chain_history_root,
+                Commitment::ChainHistoryRoot(_) => chain_history_root,
                 Commitment::ChainHistoryBlockTxAuthCommitment(hash) => {
                     hash.bytes_in_display_order()
                 }
@@ -1043,6 +1068,7 @@ where
                 merkle_root: header.merkle_root,
                 block_commitments,
                 final_sapling_root,
+                chain_history_root,
                 sapling_tree_size,
                 time: header.time.timestamp(),
                 nonce,
@@ -1974,8 +2000,11 @@ pub enum GetBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
         final_orchard_root: Option<[u8; 32]>,
 
-        // `chainhistoryroot` would be here. Undocumented. TODO: decide if we want to support it
-        //
+        /// The root of the Merkle mountain range history tree of the requested block.
+        #[serde(with = "opthex", rename = "chainhistoryroot")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        chain_history_root: Option<[u8; 32]>,
+
         /// List of transactions in block order, hex-encoded if verbosity=1 or
         /// as objects if verbosity=2.
         tx: Vec<GetBlockTransaction>,
@@ -2038,6 +2067,7 @@ impl Default for GetBlock {
             block_commitments: None,
             final_sapling_root: None,
             final_orchard_root: None,
+            chain_history_root: None,
             nonce: None,
             bits: None,
             difficulty: None,
@@ -2103,6 +2133,10 @@ pub struct GetBlockHeaderObject {
     #[serde(with = "hex", rename = "finalsaplingroot")]
     pub final_sapling_root: [u8; 32],
 
+    /// The Merkle mountain range history tree of the requested block.
+    #[serde(with = "hex", rename = "chainhistoryroot")]
+    pub chain_history_root: [u8; 32],
+
     /// The number of Sapling notes in the Sapling note commitment tree
     /// after applying this block. Used by the `getblock` RPC method.
     #[serde(skip)]
@@ -2155,6 +2189,7 @@ impl Default for GetBlockHeaderObject {
             block_commitments: Default::default(),
             final_sapling_root: Default::default(),
             sapling_tree_size: Default::default(),
+            chain_history_root: Default::default(),
             time: 0,
             nonce: [0; 32],
             solution: Solution::for_proposal(),

@@ -1045,6 +1045,15 @@ pub enum ReadRequest {
         limit: Option<NoteCommitmentSubtreeIndex>,
     },
 
+    /// Looks up a history tree either by a hash or height.
+    ///
+    /// Returns
+    ///
+    /// * [`ReadResponse::HistoryTree(Some(Arc<HistoryTree>))`](crate::ReadResponse::HistoryTree)
+    ///  if the corresponding block contains a history tree.
+    /// * [`ReadResponse::HistoryTree(None)`](crate::ReadResponse::HistoryTree) otherwise.
+    HistoryTree(HashOrHeight),
+
     /// Looks up the balance of a set of transparent addresses.
     ///
     /// Returns an [`Amount`] with the total
@@ -1155,6 +1164,7 @@ impl ReadRequest {
             ReadRequest::OrchardTree { .. } => "orchard_tree",
             ReadRequest::SaplingSubtrees { .. } => "sapling_subtrees",
             ReadRequest::OrchardSubtrees { .. } => "orchard_subtrees",
+            ReadRequest::HistoryTree(_) => "history_tree",
             ReadRequest::AddressBalance { .. } => "address_balance",
             ReadRequest::TransactionIdsByAddresses { .. } => "transaction_ids_by_addresses",
             ReadRequest::UtxosByAddresses(_) => "utxos_by_addresses",

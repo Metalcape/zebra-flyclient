@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use zebra_chain::{
     amount::{Amount, NonNegative},
     block::{self, Block},
+    history_tree::HistoryTree,
     orchard, sapling,
     serialization::DateTime32,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
@@ -221,6 +222,9 @@ pub enum ReadResponse {
         BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>,
     ),
 
+    /// Response to [`ReadRequest::HistoryTree`] with the specified history tree.
+    HistoryTree(Option<Arc<HistoryTree>>),
+
     /// Response to [`ReadRequest::AddressBalance`] with the total balance of the addresses.
     AddressBalance(Amount<NonNegative>),
 
@@ -344,6 +348,7 @@ impl TryFrom<ReadResponse> for Response {
             | ReadResponse::OrchardTree(_)
             | ReadResponse::SaplingSubtrees(_)
             | ReadResponse::OrchardSubtrees(_)
+            | ReadResponse::HistoryTree(_)
             | ReadResponse::AddressBalance(_)
             | ReadResponse::AddressesTransactionIds(_)
             | ReadResponse::AddressUtxos(_)

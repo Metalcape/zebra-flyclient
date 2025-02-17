@@ -1605,6 +1605,30 @@ impl Service<ReadRequest> for ReadStateService {
                 .wait_for_panics()
             }
 
+            ReadRequest::HistoryTree(hash_or_height) => {
+                let state = self.clone();
+
+                tokio::task::spawn_blocking(move || {
+                    span.in_scope(move || {
+                        let history_tree = state.non_finalized_state_receiver.with_watch_data(
+                            |non_finalized_state| {
+                                read::history_tree(
+                                    non_finalized_state.best_chain(),
+                                    &state.db,
+                                    hash_or_height,
+                                )
+                            },
+                        );
+
+                        // The work is done in the future.
+                        timer.finish(module_path!(), line!(), "ReadRequest::HistoryTree");
+
+                        Ok(ReadResponse::HistoryTree(history_tree))
+                    })
+                })
+                .wait_for_panics()
+            }
+
             ReadRequest::SaplingSubtrees { start_index, limit } => {
                 let state = self.clone();
 

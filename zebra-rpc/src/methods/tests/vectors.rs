@@ -57,13 +57,13 @@ async fn rpc_getinfo() {
     assert!(rpc_tx_queue_task_result.is_none());
 }
 
-// Helper function that returns the nonce, final sapling root and
-// block commitments of a given Block.
+// Helper function that returns the nonce, final sapling root,
+// chain history root and block commitments of a given Block.
 async fn get_block_data(
     read_state: &ReadStateService,
     block: Arc<Block>,
     height: usize,
-) -> ([u8; 32], [u8; 32], [u8; 32]) {
+) -> ([u8; 32], [u8; 32], [u8; 32], [u8; 32]) {
     let zebra_state::ReadResponse::SaplingTree(sapling_tree) = read_state
         .clone()
         .oneshot(zebra_state::ReadRequest::SaplingTree(HashOrHeight::Height(
@@ -86,19 +86,45 @@ async fn get_block_data(
         [0; 32]
     };
 
-    let expected_block_commitments = match block
+    let commitment = block
         .commitment(&Mainnet)
-        .expect("Unexpected failure while parsing the blockcommitments field in get_block_data")
-    {
+        .expect("Unexpected failure while parsing the blockcommitments field in get_block_data");
+
+    let expected_chain_history_root = match commitment {
+        Commitment::ChainHistoryRoot(root) => root.bytes_in_display_order(),
+        Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
+            let zebra_state::ReadResponse::HistoryTree(history_tree) = read_state
+                .clone()
+                .oneshot(zebra_state::ReadRequest::HistoryTree(HashOrHeight::Height(
+                    (height as u32).try_into().unwrap(),
+                )))
+                .await
+                .expect("should have history tree for block hash")
+            else {
+                panic!("unexpected response to HistoryTree request")
+            };
+
+            history_tree
+                .expect("missing history tree")
+                .hash()
+                .expect("history tree was empty")
+                .bytes_in_display_order()
+        }
+        _ => [0; 32],
+    };
+
+    let expected_block_commitments = match commitment {
         Commitment::PreSaplingReserved(bytes) => bytes,
         Commitment::FinalSaplingRoot(_) => expected_final_sapling_root,
-        Commitment::ChainHistoryActivationReserved => [0; 32],
-        Commitment::ChainHistoryRoot(root) => root.bytes_in_display_order(),
+        Commitment::ChainHistoryActivationReserved => expected_chain_history_root,
+        Commitment::ChainHistoryRoot(_) => expected_chain_history_root,
         Commitment::ChainHistoryBlockTxAuthCommitment(hash) => hash.bytes_in_display_order(),
     };
+
     (
         expected_nonce,
         expected_final_sapling_root,
+        expected_chain_history_root,
         expected_block_commitments,
     )
 }
@@ -180,8 +206,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -201,6 +231,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -224,8 +255,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -245,6 +280,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -268,8 +304,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -293,6 +333,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -316,8 +357,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -341,6 +386,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -364,8 +410,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -385,6 +435,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -408,8 +459,12 @@ async fn rpc_getblock() {
             .await
             .expect("We should have a GetBlock struct");
 
-        let (expected_nonce, expected_final_sapling_root, expected_block_commitments) =
-            get_block_data(&read_state, block.clone(), i).await;
+        let (
+            expected_nonce,
+            expected_final_sapling_root,
+            expected_chain_history_root,
+            expected_block_commitments,
+        ) = get_block_data(&read_state, block.clone(), i).await;
 
         assert_eq!(
             get_block,
@@ -429,6 +484,7 @@ async fn rpc_getblock() {
                 merkle_root: Some(block.header.merkle_root),
                 block_commitments: Some(expected_block_commitments),
                 final_sapling_root: Some(expected_final_sapling_root),
+                chain_history_root: Some(expected_chain_history_root),
                 final_orchard_root: None,
                 nonce: Some(expected_nonce),
                 bits: Some(block.header.difficulty_threshold),
@@ -617,14 +673,50 @@ async fn rpc_getblockheader() {
             [0; 32]
         };
 
+        let commitment = block.commitment(&Mainnet).expect(
+            "Unexpected failure while parsing the blockcommitments field in rpc_getblockheader",
+        );
+
+        let expected_chain_history_root = match commitment {
+            Commitment::ChainHistoryRoot(root) => root.bytes_in_display_order(),
+            Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
+                let zebra_state::ReadResponse::HistoryTree(history_tree) = read_state
+                    .clone()
+                    .oneshot(zebra_state::ReadRequest::HistoryTree(HashOrHeight::Height(
+                        height,
+                    )))
+                    .await
+                    .expect("should have history tree for block height")
+                else {
+                    panic!("unexpected response to HistoryTree request")
+                };
+
+                history_tree
+                    .expect("missing history tree")
+                    .hash()
+                    .expect("history tree was empty")
+                    .bytes_in_display_order()
+            }
+            _ => [0; 32],
+        };
+
+        let expected_block_commitments = match commitment {
+            Commitment::PreSaplingReserved(bytes) => bytes,
+            Commitment::FinalSaplingRoot(_) => expected_final_sapling_root,
+            Commitment::ChainHistoryActivationReserved => expected_chain_history_root,
+            Commitment::ChainHistoryRoot(_) => expected_chain_history_root,
+            Commitment::ChainHistoryBlockTxAuthCommitment(hash) => hash.bytes_in_display_order(),
+        };
+
         let expected_result = GetBlockHeader::Object(Box::new(GetBlockHeaderObject {
             hash: GetBlockHash(hash),
             confirmations: 11 - i as i64,
             height,
             version: 4,
             merkle_root: block.header.merkle_root,
-            block_commitments: block.header.commitment_bytes.0,
+            block_commitments: expected_block_commitments,
             final_sapling_root: expected_final_sapling_root,
+            chain_history_root: expected_chain_history_root,
             sapling_tree_size: sapling_tree.count(),
             time: block.header.time.timestamp(),
             nonce: expected_nonce,
