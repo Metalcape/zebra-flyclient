@@ -13,8 +13,9 @@ use zebra_chain::{
     amount::NonNegative,
     block::Height,
     history_tree::{HistoryTreeError, NonEmptyHistoryTree},
-    parameters::{Network, NetworkKind},
+    parameters::{Network, NetworkKind, NetworkUpgrade},
     primitives::zcash_history,
+    primitives::zcash_history::Entry,
     value_balance::ValueBalance,
 };
 
@@ -91,5 +92,75 @@ impl FromDisk for HistoryTreeParts {
         bincode::DefaultOptions::new()
             .deserialize(bytes.as_ref())
             .expect("deserialization format should match the serialization format used by IntoDisk")
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct HistoryNodeIndex {
+    pub upgrade: NetworkUpgrade,
+    pub index: u32,
+}
+
+impl IntoDisk for NetworkUpgrade {
+    type Bytes = Vec<u8>;
+
+    fn as_bytes(&self) -> Self::Bytes {
+        bincode::DefaultOptions::new()
+            .serialize(self)
+            .expect("serialization to vec doesn't fail")
+    }
+}
+
+impl FromDisk for NetworkUpgrade {
+    fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
+        bincode::DefaultOptions::new()
+            .deserialize(bytes.as_ref())
+            .expect("deserialization format should match the serialization format used by IntoDisk")
+    }
+}
+
+impl IntoDisk for HistoryNodeIndex {
+    type Bytes = Vec<u8>;
+
+    fn as_bytes(&self) -> Self::Bytes {
+        let mut bytes = Vec::new();
+
+        bytes.extend(self.upgrade.as_bytes());
+        bytes.extend(self.index.to_le_bytes());
+
+        bytes
+    }
+}
+
+impl FromDisk for HistoryNodeIndex {
+    fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
+        let bytes = bytes.as_ref();
+
+        let (upgrade, index) = bytes.split_at(bytes.len() - 4);
+
+        Self {
+            upgrade: NetworkUpgrade::from_bytes(upgrade),
+            index: u32::from_le_bytes(index.try_into().expect("slice is 4 bytes")),
+        }
+    }
+}
+
+impl IntoDisk for Entry {
+    type Bytes = Vec<u8>;
+
+    fn as_bytes(&self) -> Self::Bytes {
+        let mut bytes = Vec::new();
+
+        bytes.extend(self.inner());
+
+        bytes
+    }
+}
+
+impl FromDisk for Entry {
+    fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
+        let bytes = bytes.as_ref();
+        let vec = Vec::<u8>::from(bytes);
+        Self::from(&vec)
     }
 }

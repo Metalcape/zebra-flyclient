@@ -381,12 +381,15 @@ impl FinalizedState {
                 let history_tree_mut = Arc::make_mut(&mut history_tree);
                 let sapling_root = note_commitment_trees.sapling.root();
                 let orchard_root = note_commitment_trees.orchard.root();
-                history_tree_mut.push(
+                let new_entries = history_tree_mut.push(
                     &self.network(),
                     block.clone(),
                     &sapling_root,
                     &orchard_root,
                 )?;
+
+                // TODO: write new nodes to disk
+
                 let treestate = Treestate {
                     note_commitment_trees,
                     history_tree,

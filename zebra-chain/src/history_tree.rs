@@ -193,7 +193,7 @@ impl NonEmptyHistoryTree {
         block: Arc<Block>,
         sapling_root: &sapling::tree::Root,
         orchard_root: &orchard::tree::Root,
-    ) -> Result<(), HistoryTreeError> {
+    ) -> Result<Vec<Entry>, HistoryTreeError> {
         // Check if the block has the expected height.
         // librustzcash assumes the heights are correct and corrupts the tree if they are wrong,
         // resulting in a confusing error, which we prevent here.
@@ -216,7 +216,7 @@ impl NonEmptyHistoryTree {
             // Replaces self with the new tree
             *self = new_tree;
             assert_eq!(self.network_upgrade, network_upgrade);
-            return Ok(());
+            return Ok(vec![self.peaks.get(&0).unwrap().clone()]);
         }
 
         let new_entries = match &mut self.inner {
@@ -227,14 +227,14 @@ impl NonEmptyHistoryTree {
                 .append_leaf(block, sapling_root, orchard_root)
                 .map_err(|e| HistoryTreeError::InnerError { inner: e })?,
         };
-        for entry in new_entries {
+        for entry in new_entries.clone() {
             // Not every entry is a peak; those will be trimmed later
             self.peaks.insert(self.size, entry);
             self.size += 1;
         }
         self.prune()?;
         self.current_height = height;
-        Ok(())
+        Ok(new_entries)
     }
 
     /// Extend the history tree with the given blocks.
@@ -456,17 +456,17 @@ impl HistoryTree {
         block: Arc<Block>,
         sapling_root: &sapling::tree::Root,
         orchard_root: &orchard::tree::Root,
-    ) -> Result<(), HistoryTreeError> {
+    ) -> Result<Vec<Entry>, HistoryTreeError> {
         let Some(heartwood_height) = NetworkUpgrade::Heartwood.activation_height(network) else {
             assert!(
                 self.0.is_none(),
                 "history tree must not exist pre-Heartwood"
             );
 
-            return Ok(());
+            return Ok(Vec::new());
         };
 
-        match block
+        let new_entries: Vec<Entry> = match block
             .coinbase_height()
             .expect("must have height")
             .cmp(&heartwood_height)
@@ -476,6 +476,7 @@ impl HistoryTree {
                     self.0.is_none(),
                     "history tree must not exist pre-Heartwood"
                 );
+                Vec::new()
             }
             std::cmp::Ordering::Equal => {
                 let tree = Some(NonEmptyHistoryTree::from_block(
@@ -486,15 +487,15 @@ impl HistoryTree {
                 )?);
                 // Replace the current object with the new tree
                 *self = HistoryTree(tree);
+                vec![self.0.as_ref().unwrap().peaks().get(&0).unwrap().clone()]
             }
-            std::cmp::Ordering::Greater => {
-                self.0
-                    .as_mut()
-                    .expect("history tree must exist Heartwood-onward")
-                    .push(block.clone(), sapling_root, orchard_root)?;
-            }
+            std::cmp::Ordering::Greater => self
+                .0
+                .as_mut()
+                .expect("history tree must exist Heartwood-onward")
+                .push(block.clone(), sapling_root, orchard_root)?,
         };
-        Ok(())
+        Ok(new_entries)
     }
 
     /// Return the hash of the tree root if the tree is not empty.

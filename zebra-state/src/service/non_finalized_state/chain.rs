@@ -18,6 +18,7 @@ use zebra_chain::{
     orchard,
     parallel::tree::NoteCommitmentTrees,
     parameters::Network,
+    primitives::zcash_history::Entry,
     primitives::Groth16Proof,
     sapling, sprout,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
@@ -146,6 +147,8 @@ pub struct ChainInner {
     /// This extra tree is removed when the first non-finalized block is committed.
     pub(crate) history_trees_by_height: BTreeMap<block::Height, Arc<HistoryTree>>,
 
+    pub(crate) history_tree_nodes: BTreeMap<u32, Entry>,
+
     // Anchors
     //
     /// The Sprout anchors created by `blocks`.
@@ -259,6 +262,7 @@ impl Chain {
             partial_transparent_transfers: Default::default(),
             partial_cumulative_work: Default::default(),
             history_trees_by_height: Default::default(),
+            history_tree_nodes: Default::default(),
             chain_value_pools: finalized_tip_chain_value_pools,
         };
 
@@ -1159,6 +1163,34 @@ impl Chain {
         }
     }
 
+    fn add_history_nodes(&mut self, nodes: Vec<Entry>) {
+        if self.history_tree_nodes.is_empty() {
+            // iterate over nodes and insert into history tree nodes with keys starting from 0
+            let _ = nodes.into_iter().enumerate().map(|(i, node)| {
+                assert_eq!(
+                    self.history_tree_nodes.insert(i as u32, node),
+                    None,
+                    "map is empty"
+                )
+            });
+        } else {
+            // get the last key in the history tree nodes and increment it by 1
+            let last_key = self
+                .history_tree_nodes
+                .keys()
+                .last()
+                .expect("only called while history_tree_nodes is populated");
+            let start_key = last_key + 1;
+            let _ = nodes.into_iter().enumerate().map(|(i, node)| {
+                assert_eq!(
+                    self.history_tree_nodes.insert(start_key + i as u32, node),
+                    None,
+                    "incorrect overwrite of history tree nodes: new nodes must be appended"
+                )
+            });
+        }
+    }
+
     fn treestate(&self, hash_or_height: HashOrHeight) -> Option<Treestate> {
         let sprout_tree = self.sprout_tree(hash_or_height)?;
         let sapling_tree = self.sapling_tree(hash_or_height)?;
@@ -1470,7 +1502,7 @@ impl Chain {
         // TODO: update the history trees in a rayon thread, if they show up in CPU profiles
         let mut history_tree = self.history_block_commitment_tree();
         let history_tree_mut = Arc::make_mut(&mut history_tree);
-        history_tree_mut
+        let new_entries = history_tree_mut
             .push(
                 &self.network,
                 contextually_valid.block.clone(),
@@ -1478,6 +1510,9 @@ impl Chain {
                 &orchard_root,
             )
             .map_err(Arc::new)?;
+
+        // Add new entries to non finalized state
+        self.add_history_nodes(new_entries);
 
         self.add_history_tree(height, history_tree);
 

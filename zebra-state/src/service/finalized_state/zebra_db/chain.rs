@@ -17,15 +17,18 @@ use std::{
 };
 
 use zebra_chain::{
-    amount::NonNegative, block::Height, history_tree::HistoryTree, transparent,
-    value_balance::ValueBalance,
+    amount::NonNegative, block::Height, history_tree::HistoryTree,
+    primitives::zcash_history::Entry, transparent, value_balance::ValueBalance,
 };
 
 use crate::{
     request::FinalizedBlock,
     service::finalized_state::{
         disk_db::DiskWriteBatch,
-        disk_format::{chain::HistoryTreeParts, RawBytes},
+        disk_format::{
+            chain::{HistoryNodeIndex, HistoryTreeParts},
+            RawBytes,
+        },
         zebra_db::ZebraDb,
         TypedColumnFamily,
     },
@@ -50,6 +53,10 @@ pub type LegacyHistoryTreePartsCf<'cf> = TypedColumnFamily<'cf, Height, HistoryT
 /// A generic raw key type for reading history trees from the database, regardless of the database version.
 /// This type should not be used in new code.
 pub type RawHistoryTreePartsCf<'cf> = TypedColumnFamily<'cf, RawBytes, HistoryTreeParts>;
+
+pub const HISTORY_NODE: &str = "history_node";
+
+pub type HistoryNodeCf<'cf> = TypedColumnFamily<'cf, HistoryNodeIndex, Entry>;
 
 /// The name of the chain value pools column family.
 ///
@@ -82,6 +89,11 @@ impl ZebraDb {
     /// This should not be used in new code.
     pub(crate) fn raw_history_tree_cf(&self) -> RawHistoryTreePartsCf {
         RawHistoryTreePartsCf::new(&self.db, HISTORY_TREE)
+            .expect("column family was created when database was created")
+    }
+
+    pub(crate) fn history_node_cf(&self) -> HistoryNodeCf {
+        HistoryNodeCf::new(&self.db, HISTORY_NODE)
             .expect("column family was created when database was created")
     }
 
@@ -152,6 +164,10 @@ impl ZebraDb {
             .collect()
     }
 
+    pub fn history_node(&self, index: HistoryNodeIndex) -> Option<Entry> {
+        self.history_node_cf().zs_get(&index)
+    }
+
     // Value pool methods
 
     /// Returns the stored `ValueBalance` for the best chain at the finalized tip height.
@@ -177,6 +193,20 @@ impl DiskWriteBatch {
             // The batch is modified by this method and written by the caller.
             let _ = history_tree_cf.zs_insert(&(), &HistoryTreeParts::from(tree));
         }
+    }
+
+    /// Writes a history tree node to the database.
+    pub fn write_history_node(&mut self, db: &ZebraDb, index: HistoryNodeIndex, node: Entry) {
+        let history_node_cf = db.history_node_cf().with_batch_for_writing(self);
+
+        // Check if the key already exists
+        if let Some(existing_node) = db.history_node_cf().zs_get(&index) {
+            if existing_node == node {
+                return;
+            }
+        }
+
+        let _ = history_node_cf.zs_insert(&index, &node);
     }
 
     /// Legacy method: Deletes the range of history trees at the given [`Height`]s.
