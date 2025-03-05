@@ -164,8 +164,14 @@ impl ZebraDb {
             .collect()
     }
 
+    /// Returns the history node at the given index.
     pub fn history_node(&self, index: HistoryNodeIndex) -> Option<Entry> {
         self.history_node_cf().zs_get(&index)
+    }
+
+    /// Returns the last history node index.                                                                                            
+    pub fn last_history_node_index(&self) -> Option<HistoryNodeIndex> {
+        self.history_node_cf().zs_last_key_value().map(|(index, _)| index)
     }
 
     // Value pool methods
@@ -200,13 +206,28 @@ impl DiskWriteBatch {
         let history_node_cf = db.history_node_cf().with_batch_for_writing(self);
 
         // Check if the key already exists
-        if let Some(existing_node) = db.history_node_cf().zs_get(&index) {
+        if let Some(existing_node) = db.history_node_cf().zs_get(&index) {           
             if existing_node == node {
                 return;
             }
         }
 
         let _ = history_node_cf.zs_insert(&index, &node);
+    }
+
+    /// Appends a list of history nodes to the history node column family.
+    pub fn append_history_nodes(&mut self, db: &ZebraDb, nodes: Vec<Entry>) {
+        let last_index = db.last_history_node_index().unwrap_or(HistoryNodeIndex {
+            upgrade: zebra_chain::parameters::NetworkUpgrade::Heartwood,
+            index: 0,
+        });
+        let _ = nodes.into_iter().enumerate().map(|(i, node)| {
+            let index = HistoryNodeIndex {
+                upgrade: last_index.upgrade,
+                index: last_index.index + i as u32 + 1,
+            };
+            self.write_history_node(db, index, node)
+        });
     }
 
     /// Legacy method: Deletes the range of history trees at the given [`Height`]s.

@@ -389,6 +389,8 @@ impl FinalizedState {
                 )?;
 
                 // TODO: write new nodes to disk
+                let mut batch = DiskWriteBatch::new();
+                batch.append_history_nodes(&self.db, new_entries);
 
                 let treestate = Treestate {
                     note_commitment_trees,
