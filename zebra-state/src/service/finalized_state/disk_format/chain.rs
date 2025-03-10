@@ -15,7 +15,7 @@ use zebra_chain::{
     history_tree::{HistoryTreeError, NonEmptyHistoryTree},
     parameters::{Network, NetworkKind, NetworkUpgrade},
     primitives::zcash_history,
-    primitives::zcash_history::Entry,
+    primitives::zcash_history::{Entry, HistoryNodeIndex},
     value_balance::ValueBalance,
 };
 
@@ -93,12 +93,6 @@ impl FromDisk for HistoryTreeParts {
             .deserialize(bytes.as_ref())
             .expect("deserialization format should match the serialization format used by IntoDisk")
     }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct HistoryNodeIndex {
-    pub upgrade: NetworkUpgrade,
-    pub index: u32,
 }
 
 impl IntoDisk for NetworkUpgrade {

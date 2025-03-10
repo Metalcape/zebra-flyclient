@@ -18,7 +18,7 @@ use std::{
 
 use zebra_chain::{
     amount::NonNegative, block::Height, history_tree::HistoryTree,
-    primitives::zcash_history::Entry, transparent, value_balance::ValueBalance,
+    primitives::zcash_history::{Entry, HistoryNodeIndex}, transparent, value_balance::ValueBalance,
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
     service::finalized_state::{
         disk_db::DiskWriteBatch,
         disk_format::{
-            chain::{HistoryNodeIndex, HistoryTreeParts},
+            chain::HistoryTreeParts,
             RawBytes,
         },
         zebra_db::ZebraDb,

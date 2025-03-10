@@ -14,8 +14,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use zebra_chain::{
-    orchard, sapling,
-    subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
+    orchard, parameters::NetworkUpgrade, primitives::zcash_history::HistoryNodeIndex, sapling, subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex}
 };
 
 use crate::{
@@ -209,4 +208,19 @@ where
     chain
         .and_then(|chain| chain.as_ref().history_tree(hash_or_height))
         .or_else(|| Some(db.history_tree()))
+}
+
+/// Get a history node at the given index from the provided chain.
+pub fn history_node<C>(
+    chain: Option<C>,
+    db: &ZebraDb,
+    upgrade: NetworkUpgrade,
+    index: u32,
+) -> Option<zebra_chain::primitives::zcash_history::Entry>
+where
+    C: AsRef<Chain>,
+{
+    chain
+        .and_then(|chain| chain.as_ref().history_node(upgrade, index).cloned())
+        .or_else(|| db.history_node(HistoryNodeIndex { upgrade, index } ))
 }

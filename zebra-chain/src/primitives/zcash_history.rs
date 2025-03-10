@@ -106,6 +106,12 @@ impl From<&Vec<u8>> for Entry {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct HistoryNodeIndex {
+    pub upgrade: NetworkUpgrade,
+    pub index: u32,
+}
+
 impl<V: Version> Tree<V> {
     /// Create a MMR tree with the given length from the given cache of nodes.
     ///

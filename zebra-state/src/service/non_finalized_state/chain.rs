@@ -17,13 +17,11 @@ use zebra_chain::{
     history_tree::HistoryTree,
     orchard,
     parallel::tree::NoteCommitmentTrees,
-    parameters::Network,
-    primitives::zcash_history::Entry,
-    primitives::Groth16Proof,
+    parameters::{Network, NetworkUpgrade},
+    primitives::{zcash_history::Entry, Groth16Proof},
     sapling, sprout,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::Transaction::*,
-    transaction::{self, Transaction},
+    transaction::{self, Transaction::{self, *}},
     transparent,
     value_balance::ValueBalance,
     work::difficulty::PartialCumulativeWork,
@@ -1161,6 +1159,17 @@ impl Chain {
                 .remove(&height)
                 .expect("History tree must be present if block was added to chain");
         }
+    }
+
+    /// Returns the history tree node at the given index.
+    /// 
+    /// Returns none if the chain tip network upgrade does not match the given one.
+    pub fn history_node(&self, upgrade: NetworkUpgrade, index: u32) -> Option<&Entry> {
+        if upgrade != NetworkUpgrade::current(&self.network(), self.non_finalized_tip_height()) {
+            return None;
+        }
+
+        self.history_tree_nodes.get(&index).map(|node| node)
     }
 
     fn add_history_nodes(&mut self, nodes: Vec<Entry>) {
