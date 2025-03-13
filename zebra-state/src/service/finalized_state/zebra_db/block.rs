@@ -23,6 +23,7 @@ use zebra_chain::{
     orchard,
     parallel::tree::NoteCommitmentTrees,
     parameters::{Network, GENESIS_PREVIOUS_BLOCK_HASH},
+    primitives::zcash_history::Entry,
     sapling,
     serialization::TrustedPreallocate,
     transaction::{self, Transaction},
@@ -329,6 +330,7 @@ impl ZebraDb {
         &mut self,
         finalized: FinalizedBlock,
         prev_note_commitment_trees: Option<NoteCommitmentTrees>,
+        history_nodes: Option<Vec<Entry>>,
         network: &Network,
         source: &str,
     ) -> Result<block::Hash, BoxError> {
@@ -439,6 +441,10 @@ impl ZebraDb {
             self.finalized_value_pool(),
             prev_note_commitment_trees,
         )?;
+
+        if let Some(history_nodes) = history_nodes {
+            batch.append_history_nodes(self, history_nodes);
+        }
 
         self.db.write(batch)?;
 

@@ -502,6 +502,57 @@ impl HistoryTree {
     pub fn hash(&self) -> Option<ChainHistoryMmrRootHash> {
         Some(self.0.as_ref()?.hash())
     }
+
+    /// Return the index of the leaf node of this tree corresponding to the given block height.
+    pub fn leaf_index_of_block(&self, height: Height) -> Option<u32> {
+        let diff = height
+            - self
+                .0
+                .as_ref()?
+                .network_upgrade
+                .activation_height(&self.0.as_ref()?.network)
+                .unwrap();
+        if diff < 0 {
+            return None;
+        } else {
+            return Some(diff.try_into().unwrap());
+        }
+    }
+
+    /// Calculate the peak indexes of the tree when the last appended block is at the given height.
+    pub fn peaks_at(&self, height: Height) -> Option<Vec<u32>> {
+        let leaf_index = self.leaf_index_of_block(height)?;
+
+        // If bit b of leaf_index is set, there is a peak of height 2^b.
+        // Each peak at height h has 2h - 1 nodes. Each peak index equals
+        // the index of the previous peak plus the number of nodes in the
+        // current peak - 1.
+        let mut peaks = Vec::new();
+        let mut total_nodes = 0;
+        let mut mask = 1;
+        for i in 0..32 {
+            if leaf_index & mask != 0 {
+                total_nodes += 2 * i - 1;
+                peaks.push(total_nodes - 1);
+            }
+            mask <<= 1;
+        }
+
+        Some(peaks)
+    }
+
+    /// Return the number of nodes in the tree at the given block height.
+    pub fn node_count_at(&self, height: Height) -> Option<u32> {
+        self.peaks_at(height)
+            .and_then(|peaks| Some(peaks.iter().last().unwrap() + 1))
+    }
+
+    /// Return the index of the MMR node of this tree corresponding to the given block height.
+    ///
+    /// Because MMR trees are append-only, this index is preserved after appending new blocks.
+    pub fn node_index_of_block(&self, height: Height) -> Option<u32> {
+        self.node_count_at(height).and_then(|count| Some(count - 1))
+    }
 }
 
 impl From<NonEmptyHistoryTree> for HistoryTree {

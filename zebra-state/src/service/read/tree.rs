@@ -14,7 +14,11 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use zebra_chain::{
-    orchard, parameters::NetworkUpgrade, primitives::zcash_history::HistoryNodeIndex, sapling, subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex}
+    orchard,
+    parameters::NetworkUpgrade,
+    primitives::zcash_history::HistoryNodeIndex,
+    sapling,
+    subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
 };
 
 use crate::{
@@ -222,5 +226,5 @@ where
 {
     chain
         .and_then(|chain| chain.as_ref().history_node(upgrade, index).cloned())
-        .or_else(|| db.history_node(HistoryNodeIndex { upgrade, index } ))
+        .or_else(|| db.history_node(HistoryNodeIndex { upgrade, index }))
 }

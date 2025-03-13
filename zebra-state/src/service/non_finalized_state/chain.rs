@@ -21,7 +21,10 @@ use zebra_chain::{
     primitives::{zcash_history::Entry, Groth16Proof},
     sapling, sprout,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction::{self, *}},
+    transaction::{
+        self,
+        Transaction::{self, *},
+    },
     transparent,
     value_balance::ValueBalance,
     work::difficulty::PartialCumulativeWork,
@@ -1162,7 +1165,7 @@ impl Chain {
     }
 
     /// Returns the history tree node at the given index.
-    /// 
+    ///
     /// Returns none if the chain tip network upgrade does not match the given one.
     pub fn history_node(&self, upgrade: NetworkUpgrade, index: u32) -> Option<&Entry> {
         if upgrade != NetworkUpgrade::current(&self.network(), self.non_finalized_tip_height()) {

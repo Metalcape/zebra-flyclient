@@ -17,18 +17,19 @@ use std::{
 };
 
 use zebra_chain::{
-    amount::NonNegative, block::Height, history_tree::HistoryTree,
-    primitives::zcash_history::{Entry, HistoryNodeIndex}, transparent, value_balance::ValueBalance,
+    amount::NonNegative,
+    block::Height,
+    history_tree::HistoryTree,
+    primitives::zcash_history::{Entry, HistoryNodeIndex},
+    transparent,
+    value_balance::ValueBalance,
 };
 
 use crate::{
     request::FinalizedBlock,
     service::finalized_state::{
         disk_db::DiskWriteBatch,
-        disk_format::{
-            chain::HistoryTreeParts,
-            RawBytes,
-        },
+        disk_format::{chain::HistoryTreeParts, RawBytes},
         zebra_db::ZebraDb,
         TypedColumnFamily,
     },
@@ -171,7 +172,9 @@ impl ZebraDb {
 
     /// Returns the last history node index.                                                                                            
     pub fn last_history_node_index(&self) -> Option<HistoryNodeIndex> {
-        self.history_node_cf().zs_last_key_value().map(|(index, _)| index)
+        self.history_node_cf()
+            .zs_last_key_value()
+            .map(|(index, _)| index)
     }
 
     // Value pool methods
@@ -202,11 +205,13 @@ impl DiskWriteBatch {
     }
 
     /// Writes a history tree node to the database.
+    ///
+    /// The batch must be written to the database by the caller.
     pub fn write_history_node(&mut self, db: &ZebraDb, index: HistoryNodeIndex, node: Entry) {
         let history_node_cf = db.history_node_cf().with_batch_for_writing(self);
 
         // Check if the key already exists
-        if let Some(existing_node) = db.history_node_cf().zs_get(&index) {           
+        if let Some(existing_node) = db.history_node_cf().zs_get(&index) {
             if existing_node == node {
                 return;
             }
@@ -216,6 +221,8 @@ impl DiskWriteBatch {
     }
 
     /// Appends a list of history nodes to the history node column family.
+    ///
+    /// The batch must be written to the database by the caller.
     pub fn append_history_nodes(&mut self, db: &ZebraDb, nodes: Vec<Entry>) {
         let last_index = db.last_history_node_index().unwrap_or(HistoryNodeIndex {
             upgrade: zebra_chain::parameters::NetworkUpgrade::Heartwood,

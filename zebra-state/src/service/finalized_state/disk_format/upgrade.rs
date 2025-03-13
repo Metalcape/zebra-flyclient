@@ -25,6 +25,7 @@ use crate::{
     service::finalized_state::{DiskWriteBatch, ZebraDb},
 };
 
+pub(crate) mod add_history_nodes;
 pub(crate) mod add_subtrees;
 pub(crate) mod cache_genesis_roots;
 pub(crate) mod fix_tree_key_type;
@@ -608,6 +609,23 @@ impl DbFormatChange {
         // Check if we need to do the upgrade.
         if older_disk_version < &version_for_upgrading_value_balance_format {
             Self::mark_as_upgraded_to(db, &version_for_upgrading_value_balance_format)
+        }
+
+        // TODO: Upgrade the database to handle history nodes
+        let version_for_history_nodes =
+            Version::parse("26.1.0").expect("hard-coded version string should be valid.");
+
+        if older_disk_version < &version_for_history_nodes {
+            let timer = CodeTimer::start();
+
+            add_history_nodes::run(initial_tip_height, db, cancel_receiver)?;
+
+            add_history_nodes::check(db, cancel_receiver)?
+                .expect("database format is valid after upgrade");
+
+            Self::mark_as_upgraded_to(db, &version_for_history_nodes);
+
+            timer.finish(module_path!(), line!(), "add history nodes upgrade");
         }
 
         // # New Upgrades Usually Go Here
