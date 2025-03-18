@@ -332,83 +332,87 @@ impl FinalizedState {
         prev_note_commitment_trees: Option<NoteCommitmentTrees>,
         source: &str,
     ) -> Result<(block::Hash, NoteCommitmentTrees), BoxError> {
-        let (height, hash, finalized, prev_note_commitment_trees) = match finalizable_block {
-            FinalizableBlock::Checkpoint {
-                checkpoint_verified,
-            } => {
-                // Checkpoint-verified blocks don't have an associated treestate, so we retrieve the
-                // treestate of the finalized tip from the database and update it for the block
-                // being committed, assuming the retrieved treestate is the parent block's
-                // treestate. Later on, this function proves this assumption by asserting that the
-                // finalized tip is the parent block of the block being committed.
+        let (height, hash, finalized, prev_note_commitment_trees, history_nodes) =
+            match finalizable_block {
+                FinalizableBlock::Checkpoint {
+                    checkpoint_verified,
+                } => {
+                    // Checkpoint-verified blocks don't have an associated treestate, so we retrieve the
+                    // treestate of the finalized tip from the database and update it for the block
+                    // being committed, assuming the retrieved treestate is the parent block's
+                    // treestate. Later on, this function proves this assumption by asserting that the
+                    // finalized tip is the parent block of the block being committed.
 
-                let block = checkpoint_verified.block.clone();
-                let mut history_tree = self.db.history_tree();
-                let prev_note_commitment_trees = prev_note_commitment_trees
-                    .unwrap_or_else(|| self.db.note_commitment_trees_for_tip());
+                    let block = checkpoint_verified.block.clone();
+                    let mut history_tree = self.db.history_tree();
+                    let prev_note_commitment_trees = prev_note_commitment_trees
+                        .unwrap_or_else(|| self.db.note_commitment_trees_for_tip());
 
-                // Update the note commitment trees.
-                let mut note_commitment_trees = prev_note_commitment_trees.clone();
-                note_commitment_trees.update_trees_parallel(&block)?;
+                    // Update the note commitment trees.
+                    let mut note_commitment_trees = prev_note_commitment_trees.clone();
+                    note_commitment_trees.update_trees_parallel(&block)?;
 
-                // Check the block commitment if the history tree was not
-                // supplied by the non-finalized state. Note that we don't do
-                // this check for history trees supplied by the non-finalized
-                // state because the non-finalized state checks the block
-                // commitment.
-                //
-                // For Nu5-onward, the block hash commits only to
-                // non-authorizing data (see ZIP-244). This checks the
-                // authorizing data commitment, making sure the entire block
-                // contents were committed to. The test is done here (and not
-                // during semantic validation) because it needs the history tree
-                // root. While it _is_ checked during contextual validation,
-                // that is not called by the checkpoint verifier, and keeping a
-                // history tree there would be harder to implement.
-                //
-                // TODO: run this CPU-intensive cryptography in a parallel rayon
-                // thread, if it shows up in profiles
-                check::block_commitment_is_valid_for_chain_history(
-                    block.clone(),
-                    &self.network(),
-                    &history_tree,
-                )?;
+                    // Check the block commitment if the history tree was not
+                    // supplied by the non-finalized state. Note that we don't do
+                    // this check for history trees supplied by the non-finalized
+                    // state because the non-finalized state checks the block
+                    // commitment.
+                    //
+                    // For Nu5-onward, the block hash commits only to
+                    // non-authorizing data (see ZIP-244). This checks the
+                    // authorizing data commitment, making sure the entire block
+                    // contents were committed to. The test is done here (and not
+                    // during semantic validation) because it needs the history tree
+                    // root. While it _is_ checked during contextual validation,
+                    // that is not called by the checkpoint verifier, and keeping a
+                    // history tree there would be harder to implement.
+                    //
+                    // TODO: run this CPU-intensive cryptography in a parallel rayon
+                    // thread, if it shows up in profiles
+                    check::block_commitment_is_valid_for_chain_history(
+                        block.clone(),
+                        &self.network(),
+                        &history_tree,
+                    )?;
 
-                // Update the history tree.
-                //
-                // TODO: run this CPU-intensive cryptography in a parallel rayon
-                // thread, if it shows up in profiles
-                let history_tree_mut = Arc::make_mut(&mut history_tree);
-                let sapling_root = note_commitment_trees.sapling.root();
-                let orchard_root = note_commitment_trees.orchard.root();
-                history_tree_mut.push(
-                    &self.network(),
-                    block.clone(),
-                    &sapling_root,
-                    &orchard_root,
-                )?;
-                let treestate = Treestate {
-                    note_commitment_trees,
-                    history_tree,
-                };
+                    // Update the history tree.
+                    //
+                    // TODO: run this CPU-intensive cryptography in a parallel rayon
+                    // thread, if it shows up in profiles
+                    let history_tree_mut = Arc::make_mut(&mut history_tree);
+                    let sapling_root = note_commitment_trees.sapling.root();
+                    let orchard_root = note_commitment_trees.orchard.root();
+                    let new_entries = history_tree_mut.push(
+                        &self.network(),
+                        block.clone(),
+                        &sapling_root,
+                        &orchard_root,
+                    )?;
 
-                (
-                    checkpoint_verified.height,
-                    checkpoint_verified.hash,
-                    FinalizedBlock::from_checkpoint_verified(checkpoint_verified, treestate),
-                    Some(prev_note_commitment_trees),
-                )
-            }
-            FinalizableBlock::Contextual {
-                contextually_verified,
-                treestate,
-            } => (
-                contextually_verified.height,
-                contextually_verified.hash,
-                FinalizedBlock::from_contextually_verified(contextually_verified, treestate),
-                prev_note_commitment_trees,
-            ),
-        };
+                    let treestate = Treestate {
+                        note_commitment_trees,
+                        history_tree,
+                    };
+
+                    (
+                        checkpoint_verified.height,
+                        checkpoint_verified.hash,
+                        FinalizedBlock::from_checkpoint_verified(checkpoint_verified, treestate),
+                        Some(prev_note_commitment_trees),
+                        Some(new_entries),
+                    )
+                }
+                FinalizableBlock::Contextual {
+                    contextually_verified,
+                    treestate,
+                } => (
+                    contextually_verified.height,
+                    contextually_verified.hash,
+                    FinalizedBlock::from_contextually_verified(contextually_verified, treestate),
+                    prev_note_commitment_trees,
+                    None,
+                ),
+            };
 
         let committed_tip_hash = self.db.finalized_tip_hash();
         let committed_tip_height = self.db.finalized_tip_height();
@@ -444,6 +448,7 @@ impl FinalizedState {
         let result = self.db.write_block(
             finalized,
             prev_note_commitment_trees,
+            history_nodes,
             &self.network(),
             source,
         );
