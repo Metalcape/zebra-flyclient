@@ -95,6 +95,7 @@ pub const STATE_COLUMN_FAMILIES_IN_CODE: &[&str] = &[
     "orchard_note_commitment_subtree",
     // Chain
     "history_tree",
+    "history_node",
     "tip_chain_value_pool",
 ];
 
