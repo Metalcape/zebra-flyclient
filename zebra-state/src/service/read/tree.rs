@@ -14,6 +14,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use zebra_chain::{
+    block::Height,
     orchard,
     parameters::NetworkUpgrade,
     primitives::zcash_history::HistoryNodeIndex,
@@ -201,6 +202,9 @@ where
 }
 
 /// Get the history tree of the provided chain.
+///
+/// Returns the history tree at the given hash or height, if it exists in the non-finalized `chain`;
+/// otherwise, returns the history tree of the finalized chain tip.
 pub fn history_tree<C>(
     chain: Option<C>,
     db: &ZebraDb,
@@ -212,6 +216,20 @@ where
     chain
         .and_then(|chain| chain.as_ref().history_tree(hash_or_height))
         .or_else(|| Some(db.history_tree()))
+}
+
+/// Get the history tree of the provided chain at the given height.
+pub fn history_tree_by_height<C>(
+    chain: Option<C>,
+    db: &ZebraDb,
+    height: Height,
+) -> Option<Arc<zebra_chain::history_tree::HistoryTree>>
+where
+    C: AsRef<Chain>,
+{
+    chain
+        .and_then(|chain| chain.as_ref().history_tree(HashOrHeight::Height(height)))
+        .or_else(|| db.history_tree_by_height(height))
 }
 
 /// Get a history node at the given index from the provided chain.

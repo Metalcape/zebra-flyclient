@@ -34,16 +34,39 @@ pub fn run(
             .activation_height(&network)
             .expect("activation height should be valid");
 
+        // Build history tree from activation block
+        let block = zebra_db
+            .block(HashOrHeight::Height(
+                Height::try_from(activation_height.as_usize() as u32)
+                    .expect("the value was already a valid height"),
+            ))
+            .unwrap();
+        let sapling_root = zebra_db
+            .sapling_tree_by_height(
+                &Height::try_from(activation_height.as_usize() as u32)
+                    .expect("the value was already a valid height"),
+            )
+            .unwrap()
+            .root();
+        let orchard_root = zebra_db
+            .orchard_tree_by_height(
+                &Height::try_from(activation_height.as_usize() as u32)
+                    .expect("the value was already a valid height"),
+            )
+            .unwrap()
+            .root();
+        let mut tree = HistoryTree::from_block(&network, block, &sapling_root, &orchard_root)
+            .expect("history tree should exist for block");
+
         // Read all blocks between the activation height and the current height from db, push them into a new
         // history tree, and store the returned nodes. Finally, write the nodes to the database.
-        let mut tree = HistoryTree::default();
         let mut batch = DiskWriteBatch::new();
 
         if !matches!(cancel_receiver.try_recv(), Err(TryRecvError::Empty)) {
             return Err(CancelFormatChange);
         }
 
-        for h in activation_height.as_usize()..=initial_tip_height.as_usize() {
+        for h in activation_height.as_usize() + 1..=initial_tip_height.as_usize() {
             let block = zebra_db
                 .block(HashOrHeight::Height(
                     Height::try_from(h as u32).expect("the value was already a valid height"),

@@ -120,9 +120,7 @@ async fn get_block_data(
         Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
             let zebra_state::ReadResponse::HistoryTree(history_tree) = read_state
                 .clone()
-                .oneshot(zebra_state::ReadRequest::HistoryTree(HashOrHeight::Height(
-                    (height as u32).try_into().unwrap(),
-                )))
+                .oneshot(zebra_state::ReadRequest::HistoryTree(Height(height as u32)))
                 .await
                 .expect("should have history tree for block hash")
             else {
@@ -719,9 +717,7 @@ async fn rpc_getblockheader() {
             Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
                 let zebra_state::ReadResponse::HistoryTree(history_tree) = read_state
                     .clone()
-                    .oneshot(zebra_state::ReadRequest::HistoryTree(HashOrHeight::Height(
-                        height,
-                    )))
+                    .oneshot(zebra_state::ReadRequest::HistoryTree(height))
                     .await
                     .expect("should have history tree for block height")
                 else {

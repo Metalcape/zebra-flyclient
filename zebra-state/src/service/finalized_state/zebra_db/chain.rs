@@ -19,7 +19,8 @@ use std::{
 use zebra_chain::{
     amount::NonNegative,
     block::Height,
-    history_tree::HistoryTree,
+    history_tree::{HistoryTree, NonEmptyHistoryTree},
+    parameters::NetworkUpgrade,
     primitives::zcash_history::{Entry, HistoryNodeIndex},
     transparent,
     value_balance::ValueBalance,
@@ -33,7 +34,7 @@ use crate::{
         zebra_db::ZebraDb,
         TypedColumnFamily,
     },
-    BoxError,
+    BoxError, HashOrHeight,
 };
 
 /// The name of the History Tree column family.
@@ -146,6 +147,52 @@ impl ZebraDb {
             )
         });
         Arc::new(HistoryTree::from(history_tree))
+    }
+
+    /// Returns the ZIP-221 history tree at the given height.
+    ///
+    /// If history trees had not been activated at that height (pre-Heartwood),
+    /// or the state is empty, returns an empty history tree.
+    pub fn history_tree_by_height(&self, height: Height) -> Option<Arc<HistoryTree>> {
+        // Get network and upgrade from height
+        let network = self.db.network();
+        let upgrade = NetworkUpgrade::current(&network, height);
+
+        // Create temporary tree from block at height
+        let block = self.block(HashOrHeight::Height(
+            Height::try_from(height.as_usize() as u32).ok()?,
+        ))?;
+        let sapling_root = self
+            .sapling_tree_by_height(&Height::try_from(height.as_usize() as u32).ok()?)?
+            .root();
+        let orchard_root = self
+            .orchard_tree_by_height(&Height::try_from(height.as_usize() as u32).ok()?)?
+            .root();
+        let temp_tree =
+            HistoryTree::from_block(&network, block, &sapling_root, &orchard_root).ok()?;
+
+        // Get tree.peaks_at from height
+        let peak_idx = temp_tree.peaks_at(height)?;
+
+        // Read the peaks and build the tree
+        let mut peaks = BTreeMap::<u32, Entry>::new();
+        for i in peak_idx {
+            let index = HistoryNodeIndex { upgrade, index: i };
+            peaks.insert(i, self.history_node(index)?);
+        }
+
+        let inner_tree = NonEmptyHistoryTree::from_cache(
+            &network,
+            temp_tree.node_count_at(height)?,
+            peaks,
+            height,
+        );
+
+        // Return the tree
+        match inner_tree {
+            Ok(tree) => Some(Arc::new(HistoryTree::from(tree))),
+            Err(_) => None,
+        }
     }
 
     /// Returns all the history tip trees.

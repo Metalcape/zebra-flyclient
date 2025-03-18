@@ -1094,7 +1094,7 @@ where
                 Commitment::ChainHistoryBlockTxAuthCommitment(_) => {
                     let zebra_state::ReadResponse::HistoryTree(history_tree) = state
                         .clone()
-                        .oneshot(zebra_state::ReadRequest::HistoryTree(hash_or_height))
+                        .oneshot(zebra_state::ReadRequest::HistoryTree(height))
                         .await
                         .map_misc_error()?
                     else {

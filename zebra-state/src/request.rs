@@ -8,10 +8,11 @@ use std::{
 
 use zebra_chain::{
     amount::{Amount, NegativeAllowed, NonNegative},
-    block::{self, Block},
+    block::{self, Block, Height},
     history_tree::HistoryTree,
     orchard,
     parallel::tree::NoteCommitmentTrees,
+    parameters::NetworkUpgrade,
     sapling,
     serialization::SerializationError,
     sprout,
@@ -1045,14 +1046,23 @@ pub enum ReadRequest {
         limit: Option<NoteCommitmentSubtreeIndex>,
     },
 
-    /// Looks up a history tree either by a hash or height.
+    /// Looks up a history tree either by height.
     ///
     /// Returns
     ///
     /// * [`ReadResponse::HistoryTree(Some(Arc<HistoryTree>))`](crate::ReadResponse::HistoryTree)
-    ///  if the corresponding block contains a history tree.
+    ///   if the corresponding block contains a history tree.
     /// * [`ReadResponse::HistoryTree(None)`](crate::ReadResponse::HistoryTree) otherwise.
-    HistoryTree(HashOrHeight),
+    HistoryTree(Height),
+
+    /// Looks up a history node by index for the given network upgrade.
+    ///
+    /// Returns
+    ///
+    /// /// * [`ReadResponse::HistoryNode(Some(Entry))`](crate::ReadResponse::HistoryTree)
+    ///  if a history node of the specified index exists for the specified network upgrade.
+    /// * [`ReadResponse::HistoryTree(None)`](crate::ReadResponse::HistoryTree) otherwise.
+    HistoryNode(NetworkUpgrade, u32),
 
     /// Looks up the balance of a set of transparent addresses.
     ///
@@ -1165,6 +1175,7 @@ impl ReadRequest {
             ReadRequest::SaplingSubtrees { .. } => "sapling_subtrees",
             ReadRequest::OrchardSubtrees { .. } => "orchard_subtrees",
             ReadRequest::HistoryTree(_) => "history_tree",
+            ReadRequest::HistoryNode(_, _) => "history_node",
             ReadRequest::AddressBalance { .. } => "address_balance",
             ReadRequest::TransactionIdsByAddresses { .. } => "transaction_ids_by_addresses",
             ReadRequest::UtxosByAddresses(_) => "utxos_by_addresses",
