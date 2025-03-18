@@ -510,12 +510,11 @@ impl HistoryTree {
                 .0
                 .as_ref()?
                 .network_upgrade
-                .activation_height(&self.0.as_ref()?.network)
-                .unwrap();
+                .activation_height(&self.0.as_ref()?.network)?;
         if diff < 0 {
-            return None;
+            None
         } else {
-            return Some(diff.try_into().unwrap());
+            Some(diff as u32)
         }
     }
 
@@ -544,14 +543,17 @@ impl HistoryTree {
     /// Return the number of nodes in the tree at the given block height.
     pub fn node_count_at(&self, height: Height) -> Option<u32> {
         self.peaks_at(height)
-            .and_then(|peaks| Some(peaks.iter().last().unwrap() + 1))
+            .map(|peaks| match peaks.iter().last() {
+                Some(last_peak) => last_peak + 1,
+                None => 0,
+            })
     }
 
     /// Return the index of the MMR node of this tree corresponding to the given block height.
     ///
     /// Because MMR trees are append-only, this index is preserved after appending new blocks.
     pub fn node_index_of_block(&self, height: Height) -> Option<u32> {
-        self.node_count_at(height).and_then(|count| Some(count - 1))
+        self.node_count_at(height).map(|count| count - 1)
     }
 }
 

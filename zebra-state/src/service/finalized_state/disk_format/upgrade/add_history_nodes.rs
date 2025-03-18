@@ -65,7 +65,7 @@ pub fn run(
                 .push(&zebra_db.network(), block, &sapling_root, &orchard_root)
                 .expect("pushing already finalized block into new history tree should succeed");
 
-            batch.append_history_nodes(&zebra_db, nodes);
+            batch.append_history_nodes(zebra_db, nodes);
 
             if !matches!(cancel_receiver.try_recv(), Err(TryRecvError::Empty)) {
                 return Err(CancelFormatChange);

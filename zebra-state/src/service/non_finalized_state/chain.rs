@@ -1172,7 +1172,7 @@ impl Chain {
             return None;
         }
 
-        self.history_tree_nodes.get(&index).map(|node| node)
+        self.history_tree_nodes.get(&index)
     }
 
     fn add_history_nodes(&mut self, nodes: Vec<Entry>) {

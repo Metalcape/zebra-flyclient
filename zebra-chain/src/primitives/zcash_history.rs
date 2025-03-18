@@ -101,7 +101,7 @@ impl From<&Vec<u8>> for Entry {
         let mut node = Entry {
             inner: [0; zcash_history::MAX_ENTRY_SIZE],
         };
-        node.inner[..inner.len()].copy_from_slice(&inner);
+        node.inner[..inner.len()].copy_from_slice(inner);
         node
     }
 }
