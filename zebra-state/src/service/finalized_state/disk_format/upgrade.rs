@@ -618,9 +618,15 @@ impl DbFormatChange {
         if older_disk_version < &version_for_history_nodes {
             let timer = CodeTimer::start();
 
+            let last_node = db.history_node_cf().zs_last_key_value();
+            if last_node.is_some() {
+                warn!("The database has history nodes, but the upgrade to handle them has not been completed yet.");
+                warn!("Last history node: {:?}", last_node.unwrap());
+            }
+
             add_history_nodes::run(initial_tip_height, db, cancel_receiver)?;
 
-            add_history_nodes::check(db, cancel_receiver)?
+            add_history_nodes::check(initial_tip_height, db, cancel_receiver)?
                 .expect("database format is valid after upgrade");
 
             Self::mark_as_upgraded_to(db, &version_for_history_nodes);

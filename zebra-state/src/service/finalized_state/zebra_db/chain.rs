@@ -16,6 +16,7 @@ use std::{
     sync::Arc,
 };
 
+use semver::Version;
 use zebra_chain::{
     amount::NonNegative,
     block::Height,
@@ -260,7 +261,10 @@ impl DiskWriteBatch {
         // Check if the key already exists
         if let Some(existing_node) = db.history_node_cf().zs_get(&index) {
             if existing_node == node {
-                return;
+                warn!(
+                    "Overwriting history node at index {}! This should NOT happen unless when correcting a previous upgrade bug.",
+                    index.index
+                );
             }
         }
 
@@ -269,19 +273,93 @@ impl DiskWriteBatch {
 
     /// Appends a list of history nodes to the history node column family.
     ///
+    /// Panics if the provided network upgrade is not equal or immediately after
+    /// the last history node's network upgrade.
+    ///
+    /// Does nothing if the database version on disk does not support
+    /// history nodes yet.
+    ///
     /// The batch must be written to the database by the caller.
-    pub fn append_history_nodes(&mut self, db: &ZebraDb, nodes: Vec<Entry>) {
-        let last_index = db.last_history_node_index().unwrap_or(HistoryNodeIndex {
+    pub fn append_history_nodes(
+        &mut self,
+        db: &ZebraDb,
+        nodes: Vec<Entry>,
+        network_upgrade: NetworkUpgrade,
+    ) {
+        let format_version = db
+            .format_version_on_disk()
+            .expect("unable to read database version from file");
+        if let Some(version) = format_version {
+            if version
+                < Version::parse("26.1.0").expect("hard-coded version string should be valid.")
+            {
+                warn!("History node append skipped because the database has not been upgraded yet");
+                return;
+            }
+        }
+
+        let next_index = db
+            .last_history_node_index()
+            .map(|index| {
+                if index.upgrade == network_upgrade {
+                    HistoryNodeIndex {
+                        upgrade: index.upgrade,
+                        index: index.index + 1,
+                    }
+                } else {
+                    let next_upgrade = NetworkUpgrade::next_upgrade(index.upgrade);
+                    // We must not skip network upgrades
+                    assert!(next_upgrade == Some(network_upgrade));
+                    info!(
+                        "Advancing history node network upgrade from {:?} to {:?}",
+                        index.upgrade, next_upgrade
+                    );
+                    HistoryNodeIndex {
+                        upgrade: next_upgrade.unwrap(),
+                        index: 0,
+                    }
+                }
+            })
+            .unwrap_or_else(|| HistoryNodeIndex {
+                upgrade: NetworkUpgrade::Heartwood,
+                index: 0,
+            });
+
+        if next_index.upgrade != network_upgrade {
+            panic!(
+                "Expected next network upgrade to be {:?}, but got {:?}",
+                next_index.upgrade, network_upgrade
+            );
+        }
+
+        for (i, node) in nodes.iter().enumerate() {
+            let index = HistoryNodeIndex {
+                upgrade: next_index.upgrade,
+                index: next_index.index + i as u32,
+            };
+            info!(
+                "Writing history node for {:?} at index {:?}",
+                index.upgrade, index.index
+            );
+            self.write_history_node(db, index, node.clone());
+        }
+    }
+
+    /// Removes all history nodes from the database.
+    ///
+    /// Should only be used for debug and database upgrade.
+    pub fn clear_history_nodes(&mut self, db: &ZebraDb) {
+        let history_node_cf = db.history_node_cf().with_batch_for_writing(self);
+
+        let from = HistoryNodeIndex {
             upgrade: zebra_chain::parameters::NetworkUpgrade::Heartwood,
             index: 0,
-        });
-        let _ = nodes.into_iter().enumerate().map(|(i, node)| {
-            let index = HistoryNodeIndex {
-                upgrade: last_index.upgrade,
-                index: last_index.index + i as u32 + 1,
-            };
-            self.write_history_node(db, index, node)
-        });
+        };
+        let until_strictly_before = HistoryNodeIndex {
+            upgrade: zebra_chain::parameters::NetworkUpgrade::Nu6,
+            index: u32::MAX,
+        };
+        let _ = history_node_cf.zs_delete_range(&from, &until_strictly_before);
     }
 
     /// Legacy method: Deletes the range of history trees at the given [`Height`]s.

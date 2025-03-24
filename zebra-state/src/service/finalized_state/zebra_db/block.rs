@@ -22,8 +22,8 @@ use zebra_chain::{
     block::{self, Block, Height},
     orchard,
     parallel::tree::NoteCommitmentTrees,
-    parameters::{Network, GENESIS_PREVIOUS_BLOCK_HASH},
-    primitives::zcash_history::Entry,
+    parameters::{Network, NetworkUpgrade, GENESIS_PREVIOUS_BLOCK_HASH},
+    primitives::zcash_history::{Entry, HistoryNodeIndex},
     sapling,
     serialization::TrustedPreallocate,
     transaction::{self, Transaction},
@@ -443,7 +443,18 @@ impl ZebraDb {
         )?;
 
         if let Some(history_nodes) = history_nodes {
-            batch.append_history_nodes(self, history_nodes);
+            let prev_node_count = finalized
+                .treestate
+                .history_tree
+                .node_count_at(finalized.height.previous()?)
+                .unwrap();
+            for (i, node) in history_nodes.iter().enumerate() {
+                let index = HistoryNodeIndex {
+                    index: i as u32 + prev_node_count,
+                    upgrade: NetworkUpgrade::current(network, finalized.height),
+                };
+                batch.write_history_node(self, index, node.clone());
+            }
         }
 
         self.db.write(batch)?;

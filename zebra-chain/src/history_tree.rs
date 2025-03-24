@@ -510,7 +510,8 @@ impl HistoryTree {
                 .0
                 .as_ref()?
                 .network_upgrade
-                .activation_height(&self.0.as_ref()?.network)?;
+                .activation_height(&self.0.as_ref()?.network)?
+            + 1;
         if diff < 0 {
             None
         } else {
@@ -522,19 +523,18 @@ impl HistoryTree {
     pub fn peaks_at(&self, height: Height) -> Option<Vec<u32>> {
         let leaf_index = self.leaf_index_of_block(height)?;
 
-        // If bit b of leaf_index is set, there is a peak of height 2^b.
-        // Each peak at height h has 2h - 1 nodes. Each peak index equals
-        // the index of the previous peak plus the number of nodes in the
-        // current peak - 1.
+        // If bit h of leaf_index is set, there is a peak at height h.
+        // Each peak at height h has 2^h leaves and 2^(h+1) - 1 nodes.
+        // Each peak index equals the index of the previous peak plus
+        // the number of nodes in the current peak - 1.
         let mut peaks = Vec::new();
         let mut total_nodes = 0;
-        let mut mask = 1;
-        for i in 0..32 {
+        for h in (0..31).rev() {
+            let mask = 1 << h;
             if leaf_index & mask != 0 {
-                total_nodes += 2 * i - 1;
+                total_nodes += u32::pow(2, h + 1) - 1;
                 peaks.push(total_nodes - 1);
             }
-            mask <<= 1;
         }
 
         Some(peaks)
